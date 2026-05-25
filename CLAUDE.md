@@ -15,35 +15,221 @@ run.bat       # 起動
 ```
 VoiceTrainer/
 ├── main.py            — メインUI（tkinter、3タブ）
-├── audio_engine.py    — マイク選択・録音・WAV保存/読込（sounddevice）
-├── feature_engine.py  — 音声特徴量抽出（librosa）
-├── model_engine.py    — One-Class SVMモデル（scikit-learn）
+├── audio_engine.py    — マイク選択・録音・WAV保存/読込
+├── feature_engine.py  — 音声特徴量抽出
+├── model_engine.py    — One-Class SVMモデル
 ├── requirements.txt   — 依存ライブラリ
-├── install.bat        — セットアップ（Pythonパス検出 → venv → pip）
+├── install.bat        — セットアップ
 └── run.bat            — 起動
 ```
+
+---
+
+## 使用ライブラリ 詳細
+
+### sounddevice
+**役割**: マイクからの録音・デバイス管理
+
+Pythonから直接OSの音声ドライバ（Windows: WASAPI/DirectSound、Mac: CoreAudio）に
+アクセスするライブラリ。
+
+```python
+# デバイス一覧取得
+devices = sd.query_devices()  # マイク名・チャンネル数・サンプリングレートを返す
+
+# ストリーム録音（コールバック方式）
+def callback(indata, frames, time, status):
+    # 録音中、一定フレームごとに呼ばれる
+    chunks.append(indata.copy())
+
+stream = sd.InputStream(device=device_id, channels=1,
+                        samplerate=22050, callback=callback)
+stream.start()
+```
+
+コールバック方式のため、録音中もUIがフリーズしない（別スレッドで動作）。
+出力はfloat32の numpy 配列（-1.0〜1.0）。
+
+---
+
+### librosa
+**役割**: 音声の特徴量抽出エンジン。このアプリの分析処理の中心。
+
+音楽情報検索（MIR）用のPythonライブラリ。内部でFFT（高速フーリエ変換）を使い、
+時間領域の音声波形を周波数領域に変換して様々な特徴を取り出す。
+
+#### MFCC（Mel-Frequency Cepstral Coefficients）
+```python
+mfcc = librosa.feature.mfcc(y=audio, sr=22050, n_mfcc=20)
+# shape: (20, 時間フレーム数)
+```
+人間の聴覚特性（メル尺度）に基づいた音の「質感・テクスチャ」を表す係数。
+20次元 × 各フレームの平均・標準偏差 = 40次元の特徴量としてMLに渡す。
+「この声は柔らかいか・硬いか・鼻にかかっているか」などを数値化する。
+
+#### HPSS（Harmonic-Percussive Source Separation）
+```python
+harmonic, percussive = librosa.effects.hpss(audio)
+harmonic_ratio = mean(|harmonic|) / mean(|audio|)
+```
+音声を「倍音成分（harmonic）」と「ノイズ・打音成分（percussive）」に分離する。
+倍音比が高い = 芯のある、豊かな声。低い = 息漏れ・雑音が多い声。
+
+#### スペクトル重心（Spectral Centroid）
+```python
+sc = librosa.feature.spectral_centroid(y=audio, sr=22050)
+# 単位: Hz
+```
+全周波数成分の「重心」＝エネルギーが集中している周波数帯。
+高い（3000Hz以上）= 明るく通る声。低い（1000Hz以下）= 暗く篭った声。
+
+#### スペクトルコントラスト（Spectral Contrast）
+```python
+contrast = librosa.feature.spectral_contrast(y=audio, sr=22050)
+# shape: (7, 時間フレーム数)  7つの周波数帯ごとの値
+```
+各周波数帯における「山（倍音のピーク）と谷（倍音間）の差」。
+差が大きい = 倍音がはっきり立っている = 響きのある声。
+
+#### pyin（Probabilistic YIN）
+```python
+f0, voiced_flag, voiced_probs = librosa.pyin(
+    audio, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7')
+)
+```
+フレームごとの基本周波数（f0 = 声の高さ）を推定するアルゴリズム。
+voiced_flag で有声区間（声が出ている部分）と無声区間を分離する。
+有声区間のf0の標準偏差 → ピッチの揺れ → 声の安定性の計算に使う。
+
+#### RMS Energy
+```python
+rms = librosa.feature.rms(y=audio)
+```
+フレームごとの音量（Root Mean Square）。
+標準偏差/平均 = 変動係数 → エネルギーの安定性の計算に使う。
+
+---
+
+### scikit-learn
+**役割**: 機械学習モデルの学習・推論
+
+#### StandardScaler（前処理）
+```python
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)  # 平均0・標準偏差1に正規化
+```
+特徴ベクトルの各次元はスケールがバラバラ（MFCCは-200〜200、harmonic_ratioは0〜1など）。
+SVMはスケールに敏感なため、正規化が必須。
+
+#### One-Class SVM
+```python
+from sklearn.svm import OneClassSVM
+model = OneClassSVM(kernel='rbf', nu=0.05, gamma='scale')
+model.fit(X_scaled)          # 良い声サンプルのみで学習
+score = model.decision_function(X_new)  # 正 → 良い声, 負 → 悪い声
+```
+通常のSVMは「A vs B」の2クラス分類だが、One-Class SVMは「正常 vs 異常」の1クラス分類。
+良い声サンプルが作る特徴空間の「境界球」を学習し、
+新しい録音がその球の内側（良い声）か外側（良くない声）かを判定する。
+
+`nu=0.05` = 訓練データの5%を外れ値として許容する（過学習防止）。
+`kernel='rbf'` = RBFカーネル（非線形の複雑な境界を表現できる）。
+
+#### 学習フロー
+```
+良い声 WAV × N本
+  ↓ librosa で特徴抽出（各サンプル → 約100次元のベクトル）
+  ↓ StandardScaler で正規化
+  ↓ OneClassSVM.fit()
+  → 学習済みモデル（.pkl として保存可能）
+
+新しい録音
+  ↓ 同じ特徴抽出 → 同じ正規化
+  ↓ decision_function()
+  → スコア（0〜100）
+```
+
+---
+
+### numpy
+**役割**: 数値計算の基盤
+
+音声データはすべてnumpy配列（ndarray）として扱う。
+librosa・scikit-learnも内部的にnumpyを使用しており、データの受け渡しに使う。
+
+```python
+# 例: 録音チャンクを結合
+audio = np.concatenate(chunks, axis=0).flatten()
+
+# 例: WAV保存用にfloat32→int16変換
+int16 = np.clip(audio, -1.0, 1.0)
+int16 = (int16 * 32767).astype(np.int16)
+```
+
+---
+
+### matplotlib
+**役割**: 波形・スペクトログラムの描画
+
+tkinterのウィンドウ内にグラフを埋め込む（`FigureCanvasTkAgg`）。
+
+```python
+# 波形
+ax.plot(time_axis, audio, linewidth=0.4)
+
+# スペクトログラム（STFT → dB変換 → カラーマップ表示）
+D = librosa.amplitude_to_db(np.abs(librosa.stft(audio)), ref=np.max)
+librosa.display.specshow(D, sr=22050, x_axis='time', y_axis='hz', cmap='magma')
+```
+
+スペクトログラムは「横軸=時間、縦軸=周波数、色=強度」の2Dマップ。
+倍音が出ているときは縦に等間隔の明るい帯が並ぶ。
+
+---
+
+### scipy
+**役割**: WAVファイルの保存
+
+```python
+import scipy.io.wavfile as wavfile
+wavfile.write(filepath, samplerate, audio_int16)
+```
+読み込みはlibrosaを使用（リサンプリング機能があるため）。
+
+---
+
+### joblib
+**役割**: 学習済みモデルの保存・読み込み
+
+```python
+import joblib
+joblib.dump({'scaler': scaler, 'svm': model}, 'model.pkl')  # 保存
+data = joblib.load('model.pkl')                              # 読み込み
+```
+pickle互換だが大きなnumpy配列の保存が高速。
+
+---
 
 ## アーキテクチャ
 
 ### 分析する特徴量（音色・声質ベース、音程ではない）
 
-| 指標 | 抽出方法 |
-|------|---------|
-| 倍音の豊かさ | HPSS（harmonic/percussive分離）による倍音エネルギー比 |
-| 声の安定性 | pyin法でf0を推定し、有声区間の標準偏差逆数 |
-| 音の明るさ | スペクトル重心（Spectral Centroid） |
-| 声の明瞭さ | 有声区間比率（voiced frame ratio） |
-| 響き | 倍音比 + スペクトルコントラストの合成 |
-| エネルギーの安定性 | RMSエネルギーの変動係数逆数 |
+| 指標 | 計算式 | 意味 |
+|------|--------|------|
+| 倍音の豊かさ | `harmonic_ratio × 120` | HPSSで分離した倍音エネルギーの比率 |
+| 声の安定性 | `(1 / (f0_std + 1)) × 150` | 有声区間のピッチ標準偏差の逆数 |
+| 音の明るさ | `(sc_mean - 500) / 4000 × 100` | スペクトル重心のHz値 |
+| 声の明瞭さ | `voiced_ratio × 100` | 有声区間の割合 |
+| 響き | `harmonic_ratio × 60 + contrast_mean × 4` | 倍音比＋スペクトルコントラスト |
+| エネルギーの安定性 | `100 - (rms_std/rms_mean) × 150` | RMS変動係数の逆数 |
 
-内部特徴ベクトル（ML用）：MFCC×20（平均+標準偏差）、スペクトル重心/帯域/ロールオフ、ゼロ交差率、倍音比、RMS、クロマ×12、スペクトルコントラスト×7、ピッチ安定性、有声比率。
+**既知の問題**: 個別バーは固定計算式のため、良いサンプルと比較していない。
+総合スコア（One-Class SVM）だけが学習データを反映している。
 
-### MLアプローチ
-
-- **One-Class SVM**（`sklearn.svm.OneClassSVM`, `kernel='rbf'`, `nu=0.05`）
-- 「良い声」サンプルのみで学習（正常系のみの異常検知）
-- 最低3サンプル、推奨10サンプル以上
-- decision_function の出力を 0〜100 スコアに変換
+内部特徴ベクトル（ML用）：MFCC×20（平均+標準偏差）、スペクトル重心/帯域/ロールオフ、
+ゼロ交差率、倍音比、RMS、クロマ×12、スペクトルコントラスト×7、ピッチ安定性、有声比率。
+合計約100次元。
 
 ### UIフロー
 
@@ -90,3 +276,7 @@ python.exe -m pip install --upgrade pip
 ```
 **原因**: Windows の venv 内では `pip install --upgrade pip` は自己更新できない。  
 **対応**: `.bat` 内を `python -m pip install --upgrade pip` に変更。
+
+### 6. 声の安定性スコアが常に低い
+**原因**: スコア計算の係数が `× 12` で小さすぎた。安定した声でも最高8点程度にしかならなかった。  
+**対応**: `× 150` に修正。f0標準偏差 1Hz → 75点、2Hz → 50点 の範囲に正規化。
