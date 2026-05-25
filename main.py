@@ -27,7 +27,7 @@ matplotlib.rcParams['font.family'] = ['Yu Gothic', 'MS Gothic', 'sans-serif']
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 SAMPLES_DIR = "good_samples"
-SCORE_NAMES = ['倍音の豊かさ', '声の安定性', '音の明るさ', '声の明瞭さ', '響き', 'エネルギーの安定性']
+SCORE_NAMES = ['倍音の豊かさ', '声の安定性', '音の明るさ', '声の明瞭さ', '響き']
 BAR_WIDTH = 190  # px
 
 

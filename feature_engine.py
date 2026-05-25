@@ -113,8 +113,4 @@ class FeatureEngine:
         resonance = feats['harmonic_ratio'] * 60.0 + float(np.mean(feats['contrast_mean'])) * 4.0
         scores['響き'] = min(100.0, max(0.0, resonance))
 
-        # エネルギーの安定性: inverse RMS variation
-        rms_cv = feats['rms_std'] / (feats['rms_mean'] + 1e-8)
-        scores['エネルギーの安定性'] = min(100.0, max(0.0, 100.0 - rms_cv * 150.0))
-
         return scores
