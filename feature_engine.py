@@ -98,7 +98,7 @@ class FeatureEngine:
         scores['倍音の豊かさ'] = min(100.0, feats['harmonic_ratio'] * 120.0)
 
         # 声の安定性: inverse of pitch variance
-        scores['声の安定性'] = min(100.0, feats['pitch_stability'] * 12.0)
+        scores['声の安定性'] = min(100.0, feats['pitch_stability'] * 150.0)
 
         # 音の明るさ: spectral centroid normalized to 500-4500 Hz
         sc = feats['sc_mean']
