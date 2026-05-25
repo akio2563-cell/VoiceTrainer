@@ -27,6 +27,31 @@ VoiceTrainer/
 
 ## 使用ライブラリ 詳細
 
+### ライブラリ一覧（提供元・ベース・ライセンス）
+
+| ライブラリ | 提供元 | ベース・由来 | ライセンス | GitHub |
+|---|---|---|---|---|
+| sounddevice | Matthias Geier（個人） | PortAudio（C言語のクロスプラットフォーム音声I/Oライブラリ）のPythonバインディング | MIT | [spatialaudio/python-sounddevice](https://github.com/spatialaudio/python-sounddevice) |
+| librosa | Brian McFee ほか（音楽情報検索コミュニティ） | numpy/scipy/matplotlib をベースに音楽・音声分析用APIを構築。もとはニューヨーク大学の研究プロジェクト | ISC | [librosa/librosa](https://github.com/librosa/librosa) |
+| scikit-learn | INRIA（フランス国立情報学研究所）発、現在はコミュニティ主導 | SciPy/numpy をベースにした汎用機械学習ライブラリ。2007年 David Cournapeau が Google Summer of Code で開始 | BSD-3-Clause | [scikit-learn/scikit-learn](https://github.com/scikit-learn/scikit-learn) |
+| numpy | NumPy Steering Council（コミュニティ） | もとは Numeric（1995年）→ numarray → NumPy（2006年）。多次元配列演算のデファクトスタンダード | BSD | [numpy/numpy](https://github.com/numpy/numpy) |
+| matplotlib | John D. Hunter（2003年, MATLAB のグラフAPIに触発されて開発） | MATLAB のplot APIを模倣してPythonで実装。現在はコミュニティ主導 | PSF互換（独自） | [matplotlib/matplotlib](https://github.com/matplotlib/matplotlib) |
+| scipy | SciPy community（Travis Oliphant ほか, 2001年〜） | numpy を科学計算用に拡張。信号処理・統計・最適化などを含む | BSD | [scipy/scipy](https://github.com/scipy/scipy) |
+| joblib | scikit-learn チーム | もとは joblib として独立開発、現在は scikit-learn プロジェクト傘下。piplineの並列化とキャッシュが目的 | BSD-3-Clause | [joblib/joblib](https://github.com/joblib/joblib) |
+
+#### PortAudio（sounddeviceのベース）について
+sounddevice は内部で **PortAudio** というC言語ライブラリを呼び出している。
+PortAudio はWindows（WASAPI/DirectSound/MME）・Mac（CoreAudio）・Linux（ALSA/JACK）の
+各OSの音声ドライバを統一したAPIで扱えるようにした中間層。
+1999年 Ross Bencina と Phil Burk が開発、MIT ライセンスのオープンソース。
+
+#### One-Class SVM のアルゴリズム出典
+Schölkopf, B. et al. (2001). "Estimating the support of a high-dimensional distribution."
+Neural Computation, 13(7), 1443–1471.
+異常検知・新規性検出の分野で広く使われる手法。
+
+---
+
 ### sounddevice
 **役割**: マイクからの録音・デバイス管理
 
