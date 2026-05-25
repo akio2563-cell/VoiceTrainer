@@ -301,6 +301,7 @@ class App:
         def run():
             try:
                 mdl = VoiceModel()
+                sample_scores = []
                 for i, fname in enumerate(files):
                     path = os.path.join(SAMPLES_DIR, fname)
                     audio = self.audio.load_wav(path)
@@ -308,10 +309,12 @@ class App:
                     vec = self.features.to_vector(feats)
                     if vec is not None:
                         mdl.add_sample(vec)
+                        sample_scores.append(self.features.readable_scores(feats))
                     msg = f"特徴抽出中… {i+1}/{len(files)}"
                     self.root.after(0, lambda m=msg: self.train_status.config(text=m, fg='#f39c12'))
 
                 mdl.train()
+                mdl.set_reference_scores(sample_scores)
                 self.model = mdl
                 self.root.after(0, lambda: self.train_status.config(
                     text=f"✓ 学習完了 (サンプル: {mdl.sample_count}件)  → 分析タブへ",
@@ -503,13 +506,20 @@ class App:
             verdict, color = "改善の余地があります", '#e74c3c'
         self.verdict_var.set(verdict)
 
-        # Individual bars
+        # Individual bars — relative to good sample reference mean
+        ref = self.model.reference_scores
         for name, (fill, val_lbl, bg) in self._bars.items():
-            val = float(ind_scores.get(name, 0))
-            w = int(BAR_WIDTH * val / 100)
+            raw = float(ind_scores.get(name, 0))
+            ref_mean = ref.get(name, 0)
+            if ref_mean > 1e-6:
+                # How close to the good sample average (100 = matches reference)
+                display = min(100.0, raw / ref_mean * 100.0)
+            else:
+                display = raw
+            w = int(BAR_WIDTH * display / 100)
             fill.place(x=0, y=0, relheight=1.0, width=w)
-            fill.config(bg=_score_color(val))
-            val_lbl.config(text=str(int(val)))
+            fill.config(bg=_score_color(display))
+            val_lbl.config(text=str(int(display)))
 
         # Plots
         self._fig.clear()

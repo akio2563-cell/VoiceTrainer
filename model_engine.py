@@ -13,6 +13,8 @@ class VoiceModel:
         self.svm = OneClassSVM(kernel='rbf', nu=0.05, gamma='scale')
         self.is_trained = False
         self._vectors: list[np.ndarray] = []
+        # Mean of each readable score from good samples — used as reference baseline
+        self.reference_scores: dict[str, float] = {}
 
     def add_sample(self, vector: np.ndarray):
         self._vectors.append(vector.astype(np.float64))
@@ -20,6 +22,16 @@ class VoiceModel:
     @property
     def sample_count(self):
         return len(self._vectors)
+
+    def set_reference_scores(self, scores_list: list[dict]):
+        """Compute mean of each score dimension across all good samples."""
+        if not scores_list:
+            return
+        keys = scores_list[0].keys()
+        self.reference_scores = {
+            k: float(np.mean([s[k] for s in scores_list if k in s]))
+            for k in keys
+        }
 
     def train(self):
         if len(self._vectors) < MIN_SAMPLES:
@@ -50,6 +62,7 @@ class VoiceModel:
             'svm': self.svm,
             'is_trained': self.is_trained,
             'vectors': self._vectors,
+            'reference_scores': self.reference_scores,
         }, filepath)
 
     def load(self, filepath: str):
@@ -58,3 +71,4 @@ class VoiceModel:
         self.svm = data['svm']
         self.is_trained = data['is_trained']
         self._vectors = data['vectors']
+        self.reference_scores = data.get('reference_scores', {})

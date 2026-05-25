@@ -97,8 +97,10 @@ class FeatureEngine:
         # 倍音の豊かさ: harmonic energy vs total
         scores['倍音の豊かさ'] = min(100.0, feats['harmonic_ratio'] * 120.0)
 
-        # 声の安定性: inverse of pitch variance
-        scores['声の安定性'] = min(100.0, feats['pitch_stability'] * 150.0)
+        # 声の安定性: spectral centroid stability (timbre consistency over time)
+        # coefficient of variation of sc = sc_std / sc_mean → lower = more stable
+        sc_cv = feats['sc_std'] / (feats['sc_mean'] + 1e-8)
+        scores['声の安定性'] = min(100.0, max(0.0, 100.0 - sc_cv * 300.0))
 
         # 音の明るさ: spectral centroid normalized to 500-4500 Hz
         sc = feats['sc_mean']
